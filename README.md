@@ -1,17 +1,56 @@
 # Jax_TODO
 
-A simple task scheduling application built with Python and Tkinter. Users can add tasks with due dates and times, mark them as completed, delete them, and reorder them via drag-and-drop.
+A simple Task Scheduler built with Tkinter that allows users to add, remove, and reorder tasks using drag-and-drop functionality. Each task can have a due date and time, and completed tasks are displayed with a strikethrough effect.
 
-## Features
-- Dark mode UI
-- Add tasks with a due date and time
-- Mark tasks as completed (strikethrough text)
-- Drag and drop tasks to reorder them
-- Delete tasks easily
+Features
 
-## Installation
+Add tasks with a description and due date/time
 
-### 1. Clone the repository:
-```sh
-git clone https://github.com/Jalpan04/Jax_TODO.git
-cd Jax_TODO
+Mark tasks as completed (strikethrough effect)
+
+Remove tasks easily
+
+Drag and drop to reorder tasks
+
+Dark mode UI
+
+Requirements
+
+Ensure you have Python installed (>= 3.6). The application uses the following Python libraries:
+
+tkinter (built-in)
+
+datetime
+
+No additional external dependencies are required.
+
+Installation
+
+Clone the repository:
+
+git clone https://github.com/yourusername/task-scheduler.git
+cd task-scheduler
+
+Run the script:
+
+python task_scheduler.py
+
+Usage
+
+Enter the task name in the input field.
+
+Optionally, specify the due date (format: DDMMYY) and time (format: HHMM).
+
+Click the "Add" button to add the task.
+
+Click the checkbox to mark a task as completed (strikethrough effect applied).
+
+Click the ❌ button to delete a task.
+
+Drag and drop tasks to reorder them.
+
+Notes
+
+If an invalid date or time is entered, the task will default to the next day.
+
+If no time is provided, the current time is used by default.
