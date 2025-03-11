@@ -13,5 +13,5 @@ A simple task scheduling application built with Python and Tkinter. Users can ad
 
 ### 1. Clone the repository:
 ```sh
-git clone https://github.com/your-username/task-scheduler.git
-cd task-scheduler
+git clone https://github.com/Jalpan04/Jax_TODO.git
+cd Jax_TODO
