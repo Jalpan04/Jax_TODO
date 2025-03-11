@@ -29,13 +29,13 @@ No additional external dependencies are required.
 
 1. **Clone the repository:**
    ```sh
-   git clone https://github.com/yourusername/task-scheduler.git
-   cd task-scheduler
+   git clone https://github.com/Jalpan04/Jax_TODO.git
+   cd Jax_TODO
    ```
-
+   
 2. **Run the script:**
    ```sh
-   python task_scheduler.py
+   python app.py
    ```
 
 ---
@@ -57,20 +57,3 @@ No additional external dependencies are required.
 - If no time is provided, the current time is used by default.
 
 ---
-
-## License
-
-MIT License
-
----
-
-## Author
-
-Your Name
-
-Feel free to contribute to the project!
-
-
-If an invalid date or time is entered, the task will default to the next day.
-
-If no time is provided, the current time is used by default.
