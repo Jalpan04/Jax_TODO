@@ -1,175 +1,359 @@
-import tkinter as tk
-from tkinter import font
+import sys
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QFrame, QVBoxLayout, QHBoxLayout,
+                             QCheckBox, QLabel, QPushButton, QLineEdit, QWidget,
+                             QGraphicsDropShadowEffect, QSizePolicy, QSpacerItem)
+from PyQt6.QtCore import Qt, QPoint, QMimeData, QPropertyAnimation, QEasingCurve, QRect
+from PyQt6.QtGui import QFont, QDrag, QFontDatabase, QColor, QIcon, QPalette, QLinearGradient, QPainter
 from datetime import datetime, timedelta
 
+from style import TaskStyles
 
-class Task(tk.Frame):
-    def __init__(self, parent, text, due_datetime, on_delete, on_toggle, on_drag_start, on_drag_motion, on_drag_drop):
-        super().__init__(parent, bg="#2c2c2c", bd=2, relief=tk.RAISED)
+class Task(QFrame):
+    def __init__(self, parent, text, due_datetime, on_delete, on_toggle):
+        super().__init__(parent)
         self.parent = parent
         self.text = text
         self.due_datetime = due_datetime
         self.on_delete = on_delete
         self.on_toggle = on_toggle
-        self.on_drag_start = on_drag_start
-        self.on_drag_motion = on_drag_motion
-        self.on_drag_drop = on_drag_drop
         self.completed = False
+        self.drag_start_position = None
+        self.styles = TaskStyles()
 
-        # Font Settings (Fallback if Geo isn't available)
-        try:
-            self.task_font = font.Font(family="Geo", size=12, weight="bold")
-        except:
-            self.task_font = font.Font(size=12, weight="bold")
+        # Add shadow effect for depth
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(15)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        shadow.setOffset(0, 2)
+        self.setGraphicsEffect(shadow)
 
-        # Checkbox Button
-        self.check_var = tk.BooleanVar()
-        self.check_button = tk.Checkbutton(
-            self, variable=self.check_var, command=self.toggle_done, bg="#2c2c2c",
-            activebackground="#2c2c2c"
-        )
-        self.check_button.pack(side=tk.LEFT, padx=5)
+        # Setup task appearance
+        self.setStyleSheet(self.styles.task_normal_style())
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setFixedHeight(60)  # Consistent height for all tasks
 
-        # Task Label (Expands to fill space)
-        self.label = tk.Label(self, text=self.get_display_text(), font=self.task_font, fg="white", bg="#2c2c2c", anchor="w")
-        self.label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        # Layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(10)
+
+        # Checkbox
+        self.check_box = QCheckBox()
+        self.check_box.toggled.connect(self.toggle_done)
+        self.check_box.setStyleSheet(self.styles.checkbox_style())
+        self.check_box.setCheckable(True)
+        self.check_box.setText("")  # No text beside the checkbox
+        layout.addWidget(self.check_box)
+
+        # Task info container
+        task_info_container = QWidget()
+        task_info_container.setStyleSheet("background: transparent; border: none;")
+        task_info_layout = QVBoxLayout(task_info_container)
+        task_info_layout.setContentsMargins(0, 0, 0, 0)
+        task_info_layout.setSpacing(2)
+
+        # Task Label - main text
+        self.label = QLabel(self.text)
+        self.label.setFont(QFont("Segoe UI", 11, QFont.Weight.Medium))
+        self.label.setStyleSheet("color: white; background: transparent;")
+        task_info_layout.addWidget(self.label)
+
+        # Due date label - secondary text
+        self.due_date_label = QLabel(f"Due: {self.due_datetime.strftime('%d/%m/%y %H:%M')}")
+        self.due_date_label.setFont(QFont("Segoe UI", 9))
+        self.due_date_label.setStyleSheet("color: #a0a0a0; background: transparent;")
+        task_info_layout.addWidget(self.due_date_label)
+
+        layout.addWidget(task_info_container, 1)  # Stretch factor of 1 to expand
 
         # Delete Button
-        self.delete_button = tk.Button(self, text="❌", command=self.delete_task, bg="#2c2c2c", fg="#ff9100",
-                                       relief=tk.FLAT, width=3)
-        self.delete_button.pack(side=tk.RIGHT, padx=5)
+        self.delete_button = QPushButton("✕")
+        self.delete_button.setStyleSheet(self.styles.delete_button_style())
+        self.delete_button.clicked.connect(self.delete_task)
+        layout.addWidget(self.delete_button)
 
-        # Drag & Drop Support (Now on Entire Task)
-        self.bind_events(self)
-        self.bind_events(self.label)
-        self.bind_events(self.check_button)
-        self.bind_events(self.delete_button)
+        # Enable dragging
+        self.setMouseTracking(True)
 
-    def get_display_text(self):
-        """Returns formatted task text with date and time"""
-        formatted_date = self.due_datetime.strftime("%d/%m/%y %H:%M")
-        return f"{self.text}  (Due: {formatted_date})"
+        # Initialize drag properties
+        self.setProperty("dragging", False)
+        self.setProperty("dropBefore", False)
+        self.setProperty("dropAfter", False)
 
-    def bind_events(self, widget):
-        """Bind drag events to all child widgets so entire module is draggable"""
-        widget.bind("<ButtonPress-1>", self.start_drag)
-        widget.bind("<B1-Motion>", self.on_drag_motion)
-        widget.bind("<ButtonRelease-1>", self.on_drag_drop)
+    def toggle_done(self, checked):
+        """Mark task as completed or uncompleted with animation"""
+        self.completed = checked
 
-    def toggle_done(self):
-        """Mark task as completed or uncompleted"""
-        self.completed = not self.completed
-        new_font = self.task_font.copy()
-        new_font.config(overstrike=self.completed)
-
-        if self.completed:
-            self.label.config(fg="#888888", font=new_font)  # Dull color with strikethrough
+        if checked:
+            # Change task appearance when completed
+            self.label.setStyleSheet("color: #888888; text-decoration: line-through; background: transparent;")
+            self.due_date_label.setStyleSheet("color: #666666; background: transparent;")
+            self.setStyleSheet(self.styles.task_completed_style())
+            # Remove the priority indicator line
         else:
-            self.label.config(fg="white", font=self.task_font)
+            # Restore original appearance
+            self.label.setStyleSheet("color: white; background: transparent;")
+            self.due_date_label.setStyleSheet("color: #a0a0a0; background: transparent;")
+            self.setStyleSheet(self.styles.task_normal_style())
+            # Remove the priority indicator line
 
         self.on_toggle(self)
 
     def delete_task(self):
-        """Delete the task"""
+        """Delete the task with fade out animation"""
+        self.setStyleSheet(self.styles.task_delete_style())
+        # Could add a QPropertyAnimation here for fade out effect
         self.on_delete(self)
 
-    def start_drag(self, event):
-        """Starts dragging"""
-        self.on_drag_start(self)
+    def enterEvent(self, event):
+        """Mouse hover enter effect"""
+        self.setStyleSheet(self.styles.task_hover_style())
+        # Increase shadow effect
+        shadow = self.graphicsEffect()
+        shadow.setBlurRadius(20)
+        shadow.setOffset(0, 3)
+
+    def leaveEvent(self, event):
+        """Mouse hover leave effect"""
+        if not self.completed:
+            self.setStyleSheet(self.styles.task_normal_style())
+        else:
+            self.setStyleSheet(self.styles.task_completed_style())
+        # Reset shadow effect
+        shadow = self.graphicsEffect()
+        shadow.setBlurRadius(15)
+        shadow.setOffset(0, 2)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press events for drag and drop"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_start_position = event.position().toPoint()
+            # Set property to track dragging state
+            self.setProperty("dragging", True)
+            # Highlight the task when dragging starts
+            self.setStyleSheet(self.styles.task_dragging_style())
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move events for drag and drop"""
+        if not (event.buttons() & Qt.MouseButton.LeftButton) or not self.drag_start_position:
+            return
+
+        # Check if the minimum drag distance is met
+        if (event.position().toPoint() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
+            return
+
+        # Start drag
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText("task")  # Identifier for the dragged content
+        drag.setMimeData(mime_data)
+
+        # Create a visual representation during dragging
+        # Capture the widget appearance
+        pixmap = self.grab()
+        # Make it semi-transparent
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        painter.fillRect(pixmap.rect(), QColor(0, 0, 0, 160))
+        painter.end()
+
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(event.position().toPoint())
+
+        # Perform the drag operation
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release events"""
+        # Reset dragging state
+        self.setProperty("dragging", False)
+        # Reset styling based on completion status
+        if not self.completed:
+            self.setStyleSheet(self.styles.task_normal_style())
+        else:
+            self.setStyleSheet(self.styles.task_completed_style())
+        self.drag_start_position = None
 
 
-class TaskManager(tk.Tk):
+class TaskManager(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.title("Task Scheduler")
-        self.geometry("450x550")
-        self.configure(bg="#1e1e1e")  # Dark Mode
+        self.setWindowTitle("Task Scheduler")
+        self.setGeometry(100, 100, 500, 650)
+        self.styles = TaskStyles()
 
-        self.tasks = []
-        self.dragged_task = None
-        self.y_offset = 0  # Store Y offset of cursor inside the dragged task
+        # Set application style
+        self.setStyleSheet(self.styles.main_window_style())
 
-        # Task List Frame
-        self.task_frame = tk.Frame(self, bg="#1e1e1e")
-        self.task_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+        # Central widget and main layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
 
-        # Bottom Input Frame
-        self.input_frame = tk.Frame(self, bg="#1e1e1e")
-        self.input_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
+        # App title and header
+        header = QWidget()
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 15)
 
-        # Task Entry Box
-        self.task_entry = tk.Entry(self.input_frame, font=("Geo", 12, "bold"), bd=2, relief=tk.GROOVE,
-                                   bg="#2c2c2c", fg="white", insertbackground="white", width=18)
-        self.task_entry.pack(side=tk.LEFT, padx=5)
+        title_label = QLabel("Task Scheduler")
+        title_label.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        title_label.setStyleSheet("color: #ff9100;")
+        header_layout.addWidget(title_label)
 
-        # Date Entry Box with Placeholder
-        self.date_entry = tk.Entry(self.input_frame, font=("Geo", 12, "bold"), bd=2, relief=tk.GROOVE,
-                                   bg="#2c2c2c", fg="#888888", insertbackground="white", width=8)
-        self.date_entry.pack(side=tk.LEFT, padx=5)
-        self.date_entry.insert(0, "DDMMYY")
+        date_label = QLabel(f"Today: {datetime.now().strftime('%A, %d %B %Y')}")
+        date_label.setFont(QFont("Segoe UI", 12))
+        date_label.setStyleSheet("color: #a0a0a0;")
+        header_layout.addWidget(date_label)
 
-        # Time Entry Box with Placeholder
-        self.time_entry = tk.Entry(self.input_frame, font=("Geo", 12, "bold"), bd=2, relief=tk.GROOVE,
-                                   bg="#2c2c2c", fg="#888888", insertbackground="white", width=6)
-        self.time_entry.pack(side=tk.LEFT, padx=5)
-        self.time_entry.insert(0, "HHMM")
+        main_layout.addWidget(header)
+
+        # Task list with scroll
+        self.task_list_widget = QWidget()
+        self.task_list_layout = QVBoxLayout(self.task_list_widget)
+        self.task_list_layout.setSpacing(10)  # Increased spacing between tasks
+        self.task_list_layout.setContentsMargins(5, 5, 5, 5)
+        self.task_list_layout.addStretch(1)  # Push content to the top
+
+        # Add scroll effect to the task list
+        scroll_area = QWidget()
+        scroll_layout = QVBoxLayout(scroll_area)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.addWidget(self.task_list_widget)
+
+        main_layout.addWidget(scroll_area, 1)  # Stretch factor to expand
+
+        # Input section
+        input_widget = QFrame()
+        input_widget.setStyleSheet(self.styles.input_panel_style())
+
+        # Add shadow to input panel
+        input_shadow = QGraphicsDropShadowEffect()
+        input_shadow.setBlurRadius(20)
+        input_shadow.setColor(QColor(0, 0, 0, 100))
+        input_shadow.setOffset(0, 4)
+        input_widget.setGraphicsEffect(input_shadow)
+
+        input_layout = QVBoxLayout(input_widget)
+        input_layout.setContentsMargins(15, 15, 15, 15)
+        input_layout.setSpacing(15)
+
+        # Add "Add New Task" header
+        new_task_label = QLabel("Add New Task")
+        new_task_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        new_task_label.setStyleSheet("color: white;")
+        input_layout.addWidget(new_task_label)
+
+        # Task name input with icon
+        task_input_container = QWidget()
+        task_input_layout = QHBoxLayout(task_input_container)
+        task_input_layout.setContentsMargins(0, 0, 0, 0)
+
+        task_icon = QLabel("📋")  # Task icon
+        task_icon.setStyleSheet("font-size: 16px;")
+        task_input_layout.addWidget(task_icon)
+
+        self.task_entry = QLineEdit()
+        self.task_entry.setPlaceholderText("What needs to be done?")
+        self.task_entry.setStyleSheet(self.styles.entry_style())
+        self.task_entry.setMinimumHeight(40)
+        task_input_layout.addWidget(self.task_entry)
+
+        input_layout.addWidget(task_input_container)
+
+        # Date and time inputs
+        datetime_container = QWidget()
+        datetime_layout = QHBoxLayout(datetime_container)
+        datetime_layout.setContentsMargins(0, 0, 0, 0)
+        datetime_layout.setSpacing(10)
+
+        # Date Entry with icon
+        date_container = QWidget()
+        date_layout = QHBoxLayout(date_container)
+        date_layout.setContentsMargins(0, 0, 0, 0)
+
+        date_icon = QLabel("📅")  # Calendar icon
+        date_icon.setStyleSheet("font-size: 16px;")
+        date_layout.addWidget(date_icon)
+
+        self.date_entry = QLineEdit()
+        self.date_entry.setPlaceholderText("DDMMYY")
+        self.date_entry.setStyleSheet(self.styles.entry_style())
+        self.date_entry.setMinimumHeight(40)
+        date_layout.addWidget(self.date_entry)
+
+        datetime_layout.addWidget(date_container)
+
+        # Time Entry with icon
+        time_container = QWidget()
+        time_layout = QHBoxLayout(time_container)
+        time_layout.setContentsMargins(0, 0, 0, 0)
+
+        time_icon = QLabel("🕒")  # Clock icon
+        time_icon.setStyleSheet("font-size: 16px;")
+        time_layout.addWidget(time_icon)
+
+        self.time_entry = QLineEdit()
+        self.time_entry.setPlaceholderText("HHMM")
+        self.time_entry.setStyleSheet(self.styles.entry_style())
+        self.time_entry.setMinimumHeight(40)
+        time_layout.addWidget(self.time_entry)
+
+        datetime_layout.addWidget(time_container)
+
+        input_layout.addWidget(datetime_container)
 
         # Add Task Button
-        self.add_btn = tk.Button(self.input_frame, text="Add", command=self.add_task, **self.btn_style())
-        self.add_btn.pack(side=tk.RIGHT, padx=5)
+        self.add_btn = QPushButton("Add Task")
+        self.add_btn.setStyleSheet(self.styles.button_style())
+        self.add_btn.setMinimumHeight(45)
+        self.add_btn.clicked.connect(self.add_task)
+        input_layout.addWidget(self.add_btn)
 
-        # Bind Placeholder Logic
-        self.date_entry.bind("<FocusIn>", lambda e: self.clear_placeholder(self.date_entry, "DDMMYY"))
-        self.date_entry.bind("<FocusOut>", lambda e: self.restore_placeholder(self.date_entry, "DDMMYY"))
+        main_layout.addWidget(input_widget)
 
-        self.time_entry.bind("<FocusIn>", lambda e: self.clear_placeholder(self.time_entry, "HHMM"))
-        self.time_entry.bind("<FocusOut>", lambda e: self.restore_placeholder(self.time_entry, "HHMM"))
-
-
-    def btn_style(self):
-        """Returns button styling"""
-        return {
-            "font": ("Geo", 12, "italic"), "bg": "#ff9100", "fg": "black",
-            "bd": 0, "relief": tk.FLAT, "width": 8, "height": 1,
-            "activebackground": "#d67c00", "activeforeground": "black",
-            "cursor": "hand2"
-        }
-
-    def clear_placeholder(self, entry_widget, placeholder_text):
-        """Clears placeholder text when clicking inside"""
-        if entry_widget.get() == placeholder_text:
-            entry_widget.delete(0, tk.END)
-            entry_widget.config(fg="white")  # Change text color to normal
-
-    def restore_placeholder(self, entry_widget, placeholder_text):
-        """Restores placeholder text when losing focus if empty"""
-        if not entry_widget.get():
-            entry_widget.insert(0, placeholder_text)
-            entry_widget.config(fg="#888888")  # Make placeholder text gray
-
+        # Store tasks
+        self.tasks = []
+        self.setAcceptDrops(True)
 
     def add_task(self):
-        """Adds a new task module"""
-        task_text = self.task_entry.get().strip()
-        date_text = self.date_entry.get().strip()
-        time_text = self.time_entry.get().strip()
+        """Adds a new task with animation"""
+        task_text = self.task_entry.text().strip()
+        date_text = self.date_entry.text().strip()
+        time_text = self.time_entry.text().strip()
 
         if not task_text:  # Prevent empty task addition
+            # Could add a subtle shake animation to the input field
+            self.task_entry.setStyleSheet(self.styles.input_error_style())
+            # Reset styling after brief period
+            QApplication.processEvents()
+            import time
+            time.sleep(0.3)
+            self.task_entry.setStyleSheet(self.styles.entry_style())
             return
 
         due_datetime = self.get_due_datetime(date_text, time_text)
 
+        # Create new task
         task = Task(
-            self.task_frame, task_text, due_datetime, self.remove_task, self.keep_order,
-            self.start_drag, self.move_task, self.drop_task
+            self.task_list_widget,
+            task_text,
+            due_datetime,
+            self.remove_task,
+            self.toggle_task
         )
-        task.pack(fill=tk.X, pady=2, padx=5)
+
+        # Insert at top of the list
+        self.task_list_layout.insertWidget(0, task)
         self.tasks.append(task)
 
         # Clear inputs
-        self.task_entry.delete(0, tk.END)
-        self.date_entry.delete(0, tk.END)
-        self.time_entry.delete(0, tk.END)
+        self.task_entry.clear()
+        self.date_entry.clear()
+        self.time_entry.clear()
+
+        self.task_entry.setFocus()  # Set focus back to task entry
 
     def get_due_datetime(self, date_text, time_text):
         """Parses date and time, applies defaults if empty"""
@@ -177,14 +361,24 @@ class TaskManager(tk.Tk):
 
         # Handle time input
         if time_text and time_text.isdigit() and len(time_text) == 4:
-            hours, minutes = int(time_text[:2]), int(time_text[2:])
+            try:
+                hours, minutes = int(time_text[:2]), int(time_text[2:])
+                if 0 <= hours < 24 and 0 <= minutes < 60:
+                    pass  # Valid time
+                else:
+                    hours, minutes = now.hour, now.minute
+            except ValueError:
+                hours, minutes = now.hour, now.minute
         else:
             hours, minutes = now.hour, now.minute
 
         # Handle date input
         if date_text and date_text.isdigit() and len(date_text) == 6:
-            day, month, year = int(date_text[:2]), int(date_text[2:4]), int(date_text[4:])
-            year += 2000  # Convert YY to YYYY
+            try:
+                day, month, year = int(date_text[:2]), int(date_text[2:4]), int(date_text[4:])
+                year += 2000  # Convert YY to YYYY
+            except ValueError:
+                day, month, year = now.day, now.month, now.year
         else:
             day, month, year = now.day, now.month, now.year
 
@@ -196,70 +390,159 @@ class TaskManager(tk.Tk):
     def remove_task(self, task):
         """Removes the task from the list"""
         if task in self.tasks:
-            task.destroy()
+            self.task_list_layout.removeWidget(task)
+            task.deleteLater()
             self.tasks.remove(task)
 
-    def keep_order(self, task):
-        """Ensures order remains unchanged when toggling completion"""
-        pass
+    def toggle_task(self, task):
+        """Handle task toggle event"""
+        if task is None:
+            print("Error: Task is None!")
+            return  # Avoid further execution if the task is invalid
 
-    def start_drag(self, task):
-        """Starts dragging a task"""
-        self.dragged_task = task
-        task.lift()
-        task.config(bg="#444444")  # Highlight the task while dragging
-        self.y_offset = task.winfo_pointery() - task.winfo_rooty()
-        self.x_offset = task.winfo_pointerx() - task.winfo_rootx()
+        task.completed = not task.completed  # Toggle completion status
 
-    def move_task(self, event):
-        """Moves the dragged task smoothly"""
-        if not self.dragged_task:
-            return
+        print(f"Task '{task}' toggled. Completed: {task.completed}")
 
-        # Calculate new Y position
-        y_pos = event.y_root - self.task_frame.winfo_rooty() - self.y_offset
-
-        # Ensure the dragged task stays centered
-        frame_width = self.task_frame.winfo_width()
-        task_width = self.dragged_task.winfo_width()
-        x_pos = (frame_width - task_width) // 2  # Centering formula
-
-        # Move the task to new position while keeping it centered
-        self.dragged_task.place(x=x_pos, y=y_pos)
-
-        # Determine new order
-        for i, t in enumerate(self.tasks):
-            if t == self.dragged_task:
-                continue
-
-            t_y = t.winfo_y() + t.winfo_height() // 2
-            if y_pos < t_y:
-                self.tasks.remove(self.dragged_task)
-                self.tasks.insert(i, self.dragged_task)
-                self.update_task_order()
-                break
-
-    def drop_task(self, event):
-        """Drops the dragged task and maximizes it on right-click release"""
-        if not self.dragged_task:
-            return
-
-        if event.num == 3:  # Right-click release (Right Mouse Button)
-            # Expand the module
-            self.dragged_task.config(width=self.task_frame.winfo_width(), height=100)  # Adjust height as needed
-
-        self.dragged_task.config(bg="#2c2c2c")  # Reset color
-        self.dragged_task.place_forget()  # Reset position
-        self.update_task_order()
-        self.dragged_task = None
+        if task in self.tasks:
+            self.tasks.remove(task)
+            if task.completed:
+                self.tasks.append(task)  # Move to end if completed
+            else:
+                self.tasks.insert(0, task)  # Move to beginning if active
+            self.update_task_order()
 
     def update_task_order(self):
-        """Updates the order of tasks on the UI"""
-        for t in self.tasks:
-            t.pack_forget()
-            t.pack(fill=tk.X, pady=2, padx=5)
+        """Updates the order of tasks in the UI"""
+        # Remove all tasks safely
+        for task in self.tasks:
+            if task is not None and task in self.task_list_layout.children():
+                self.task_list_layout.removeWidget(task)
+                task.setParent(None)  # Detach widget safely
+
+        # Re-add them in the correct order
+        for i, task in enumerate(self.tasks):
+            if task is not None:
+                self.task_list_layout.insertWidget(i, task)
+
+    def dragEnterEvent(self, event):
+        """Handle when drag enters the main window"""
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+            # Highlight potential drop area
+            self.highlight_drop_zone(event.position().y())
+
+    def dragMoveEvent(self, event):
+        """Handle drag movement over the window"""
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+            # Update highlighted drop area
+            self.highlight_drop_zone(event.position().y())
+
+    def dragLeaveEvent(self, event):
+        """Handle when drag leaves the window"""
+        # Remove any drop zone highlighting
+        self.clear_drop_highlighting()
+
+    def highlight_drop_zone(self, y_position):
+        """Highlights the potential drop zone"""
+        source_task = None
+        target_index = -1
+
+        # Find the dragged task
+        for task in self.tasks:
+            if task.property("dragging"):
+                source_task = task
+                break
+
+        # Determine where it would be dropped
+        for i, task in enumerate(self.tasks):
+            if task == source_task:
+                continue
+
+            task_y = task.y()
+            task_height = task.height()
+
+            # Clear previous styling
+            task.setProperty("dropBefore", False)
+            task.setProperty("dropAfter", False)
+
+            # If cursor is above the middle of this task
+            if y_position < task_y + (task_height / 2):
+                task.setProperty("dropBefore", True)
+                task.setStyleSheet(task.styleSheet())  # Force style update
+                target_index = i
+                break
+            # If this is the last task and cursor is below it
+            elif i == len(self.tasks) - 1:
+                task.setProperty("dropAfter", True)
+                task.setStyleSheet(task.styleSheet())  # Force style update
+                target_index = i + 1
+
+        # Apply visual styling to all tasks based on properties
+        for task in self.tasks:
+            if task.property("dropBefore"):
+                # Add top border or background highlight
+                task.setStyleSheet(task.styleSheet() + "border-top: 2px solid #ff9100;")
+            elif task.property("dropAfter"):
+                # Add bottom border or background highlight
+                task.setStyleSheet(task.styleSheet() + "border-bottom: 2px solid #ff9100;")
+
+    def clear_drop_highlighting(self):
+        """Clears all drop zone highlighting"""
+        for task in self.tasks:
+            task.setProperty("dropBefore", False)
+            task.setProperty("dropAfter", False)
+            # Reset to normal styling based on completion status
+            if task.completed:
+                task.setStyleSheet(self.styles.task_completed_style())
+            else:
+                task.setStyleSheet(self.styles.task_normal_style())
+
+    def dropEvent(self, event):
+        """Handle drop events to reorder tasks"""
+        if event.mimeData().hasText() and event.source() in self.tasks:
+            source_task = event.source()
+            drop_y = event.position().y()
+
+            # Determine insertion index based on drop position
+            insert_index = 0
+            for i, task in enumerate(self.tasks):
+                if task == source_task:
+                    continue
+
+                task_y = task.y() + task.height() / 2
+                if drop_y > task_y:
+                    insert_index = i + 1
+
+            # Only reorder if the position changed
+            current_index = self.tasks.index(source_task)
+            if current_index != insert_index and current_index + 1 != insert_index:
+                # Remove from current position
+                self.tasks.remove(source_task)
+
+                # Insert at new position
+                if current_index < insert_index:
+                    insert_index -= 1  # Adjust index after removal
+
+                self.tasks.insert(insert_index, source_task)
+                self.update_task_order()
+
+            # Clear any highlighting
+            self.clear_drop_highlighting()
+            event.acceptProposedAction()
+
+
+def main():
+    app = QApplication(sys.argv)
+
+    # Try to load the preferred fonts if available
+    QFontDatabase.addApplicationFont("SegoeUI.ttf")  # Load Segoe UI if available
+
+    window = TaskManager()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    app = TaskManager()
-    app.mainloop()
+    main()
