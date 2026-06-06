@@ -46,7 +46,7 @@ No additional external dependencies are required.
 2. Optionally, specify the due date (format: `DDMMYY`) and time (format: `HHMM`).
 3. Click the "Add" button to add the task.
 4. Click the checkbox to mark a task as completed (strikethrough effect applied).
-5. Click the ❌ button to delete a task.
+5. Click the delete button next to a task to remove it.
 6. Drag and drop tasks to reorder them.
 
 ---
@@ -57,3 +57,7 @@ No additional external dependencies are required.
 - If no time is provided, the current time is used by default.
 
 ---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
