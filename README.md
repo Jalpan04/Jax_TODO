@@ -1,5 +1,7 @@
 # Jax_TODO
 
+![GitHub top language](https://img.shields.io/github/languages/top/Jalpan04/Jax_TODO) ![GitHub repo size](https://img.shields.io/github/repo-size/Jalpan04/Jax_TODO) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A simple Task Scheduler built with **Tkinter** that allows users to add, remove, and reorder tasks using drag-and-drop functionality. Each task can have a due date and time, and completed tasks are displayed with a strikethrough effect.
 
 ---
